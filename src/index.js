@@ -6,6 +6,19 @@ const Filter = require("bad-words");
 const { generateMessage, generateLocationMessage } = require("./utils/messages");
 const { addUser, removeUser, getUser, getUsersInRoom } = require("./utils/users");
 
+const allMessages = []
+const saveMessage = (username, message, room) => {
+    allMessages.push({
+        username: username,
+        message: message,
+        room: room
+    })
+}
+const getAllMessagesOfRoom = (room) => {
+    return allMessages.filter(en => en.room === room)
+}
+const adminUser = "تطبيق المحادثة البسيط"
+
 const app = express();
 const server = http.createServer(app);
 const io = socketio(server);
@@ -25,10 +38,17 @@ io.on("connection", socket => {
     if (error) {
       return callback(error);
     } else {
+      if(user.room !== process.env.MAIN_ROOM){
+        return callback("Error")
+      }
       socket.join(user.room);
+      socket.emit("message", generateMessage(adminUser, "مرحبا بك!"));
+      socket.broadcast.to(user.room).emit("message", generateMessage(adminUser, `${user.username} انضم من جديد!`));
+      const allMessagesInRoom = getAllMessagesOfRoom(user.room)
 
-      socket.emit("message", generateMessage("Admin", "Welcome!"));
-      socket.broadcast.to(user.room).emit("message", generateMessage("Admin", `${user.username} has joined!`));
+      allMessagesInRoom.forEach(m => {
+        socket.emit("message", generateMessage(m.username, m.message))
+      })
       io.to(user.room).emit("roomData", {
         room: user.room,
         users: getUsersInRoom(user.room)
@@ -45,6 +65,10 @@ io.on("connection", socket => {
     if (filter.isProfane(message)) {
       return callback("Profanity is not allowed!");
     } else {
+      if(user){
+        saveMessage(user.username, message, user.room)
+      }
+      
       io.to(user.room).emit("message", generateMessage(user.username, message));
       callback();
     }
@@ -60,7 +84,7 @@ io.on("connection", socket => {
     const user = removeUser(socket.id);
 
     if (user) {
-      io.to(user.room).emit("message", generateMessage("Admin", `${user.username} has left!`));
+      io.to(user.room).emit("message", generateMessage(adminUser, `${user.username} غادر الغرفة!`));
       io.to(user.room).emit("roomData", {
         room: user.room,
         users: getUsersInRoom(user.room)
